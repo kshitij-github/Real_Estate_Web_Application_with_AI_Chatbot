@@ -185,3 +185,24 @@ export const createResidency = async (data, token) => {
     throw error
   }
 }
+
+const Chatbot = () => {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+
+  const handleSend = async () => {
+    const userMessage = { role: 'user', content: input };
+    setMessages([...messages, userMessage]);
+
+    try {
+      // Send the user's question to the backend
+      const res = await axios.post('/api/chatbot', { question: input });
+      const botResponse = { role: 'bot', content: res.data.answer };
+      setMessages([...messages, userMessage, botResponse]);
+    } catch (error) {
+      console.error('Error in chatbot interaction:', error);
+    }
+
+    setInput('');
+  };
+}
