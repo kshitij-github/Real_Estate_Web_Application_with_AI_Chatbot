@@ -3,16 +3,123 @@ import { prisma } from "../config/prismaConfig.js";
 
 export const createUser = asyncHandler(async (req, res) => {
   console.log("creating a user");
+app.use(cookieParser());
+//crete jwt secret key 
+const jwtSecret = 'E3P5S8X4G2B7F1Y9D6I0C3R6K9T2Z1A7L';
+//genearting salt using gensaltsync method of 10 rounds of processing ,algo will go through 2^10  1024 ronds of processing of hashing  
+const bcryptSalt = bcrypt.genSaltSync(10);
 
-  let { email } = req.body;
-  const userExists = await prisma.user.findUnique({ where: { email: email } });
-  if (!userExists) {
-    const user = await prisma.user.create({ data: req.body });
-    res.send({
-      message: "User registered successfully",
-      user: user,
+app.get('/api/test', (req, res) => {
+
+  res.json('Test Ok');
+});
+
+//apis for create and login
+app.post('/api/register', async (req, res) => {
+  const { username, email, password } = req.body;
+  try {
+    const userData = await User.create({
+      username,
+      email,
+      password: bcrypt.hashSync(password, bcryptSalt),
     });
-  } else res.status(201).send({ message: "User already registered" });
+    res.json(userData);
+  } catch (e) {
+    console.log('Failed to create User', e);
+    res.status(422).json('Failed to create User');
+  }
+});
+
+//to retreive data from token we used this method in evry api
+const getUserDataFromToken = req => {
+  return new Promise((resolve, reject) => {
+    jwt.verify(req.cookies.token, jwtSecret, {}, (e, userData) => {
+      if (e) throw e;
+      resolve(userData);
+    });
+  });
+};
+
+app.post('/api/login', async (req, res) => {
+  mongoose.connect(process.env.MONGO_URL);
+  const { username, password } = req.body;
+  const userData = await User.findOne({ username });
+  if (userData) {
+    const passOk = bcrypt.compareSync(password, userData.password);
+    if (passOk) {
+      jwt.sign(
+        {
+          username: userData.username,
+          id: userData._id,
+        },
+        jwtSecret,
+        {},
+        (e, token) => {
+          if (e) throw e;
+          //here cookie response will send to user computer and it will be stored there whic will contain token and userdata
+          res.cookie('token', token).json(userData);
+        },
+      );
+    } else {
+      res.status(422).json('Password Did not match');
+    }
+  } else {
+    res.json('User Details Not Found');
+  }
+});
+app.get('/api/profile', (req, res) => {
+  mongoose.connect(process.env.MONGO_URL);
+  const { token } = req.cookies;
+  // res.json({token})
+  if (token) {
+    // try and verify the token
+    jwt.verify(token, jwtSecret, {}, async (err, user) => {
+      if (err) throw err;
+      const { username, email, _id } = await User.findById(user.id);
+      res.json({ username, email, _id });
+    });
+  } else {
+    res.json(null);
+  }
+});
+app.post('/api/logout', (req, res) => {
+  mongoose.connect(process.env.MONGO_URL);
+  res.cookie('token', '').json(true);
+});
+// Post details to the database
+app.post('/api/personal', async (req, res) => {
+  mongoose.connect(process.env.MONGO_URL);
+  // get token to verify the user
+  const { token } = req.cookies;
+  const { name, email, address, phone, website, linked } = req.body;
+  jwt.verify(token, jwtSecret, {}, async (e, user) => {
+    if (e) throw e;
+    try {
+      const postData = await Personal.create({
+        user: user.id,
+        name,
+        email
+      });
+      res.json(postData);
+    } catch (e) {
+      res.status(500).json('ailed to post details');
+    }
+  });
+});
+app.post('/api/objective', async (req, res) => {
+  mongoose.connect(process.env.MONGO_URL);
+  const userData = await getUserDataFromToken(req);
+  const { objective } = req.body;
+
+  try {
+    const postData = await Objective.create({
+      objective,
+      user: userData.id,
+    });
+    res.json(postData);
+  } catch (e) {
+    res.status(500).json('ailed to post details');
+  }
 });
 
 // function to book a visit to resd
